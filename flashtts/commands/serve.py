@@ -131,6 +131,7 @@ def build_app(args) -> FastAPI:
         await warmup_engine(engine)
         # 将 engine 保存到 app.state 中，方便路由中使用
         app.state.engine = engine
+        app.state.model_name = args.model_name or engine.engine_name
 
         yield
 
@@ -170,6 +171,9 @@ class ServerCommand(BaseCLICommand):
         serve_parser = parser.add_parser("serve", help="CLI tool to serve.")
 
         add_model_parser(serve_parser)
+        serve_parser.add_argument(
+            "--model_name", type=str, default=None, help="Name of model to serve for openai router."
+        )
         serve_parser.add_argument("--role_dir", type=str, default=None,
                                   help="Directory containing predefined speaker roles")
         serve_parser.add_argument("--api_key", type=str, default=None,

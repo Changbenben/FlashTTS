@@ -21,11 +21,11 @@ openai_router = APIRouter(
 @openai_router.get("/models")
 async def list_models(raw_request: Request):
     """List all available models"""
-    engine: AutoEngine = raw_request.app.state.engine
+    model_name: str = raw_request.app.state.model_name
 
     # Create standard model list
     models = ModelList(data=[
-        ModelCard(id=engine.engine_name)
+        ModelCard(id=model_name)
     ])
 
     return JSONResponse(content=models.model_dump())
@@ -82,7 +82,8 @@ async def create_speech(
         client_request: Request
 ):
     engine: AutoEngine = client_request.app.state.engine
-    if request.model not in [engine.engine_name]:
+    model_name: str = client_request.app.state.model_name
+    if request.model not in [model_name]:
         raise HTTPException(
             status_code=400,
             detail={
