@@ -37,7 +37,7 @@ class TrtLLMGenerator(BaseLLM):
             tokenizer=model_path,
             dtype='auto',
             max_batch_size=batch_size,
-            max_num_tokens=kwargs.pop('max_num_tokens', max_length * batch_size),
+            max_num_tokens=kwargs.pop('max_num_tokens', max_length),
             **kwargs,
         )
         super().__init__(

@@ -743,10 +743,12 @@ class AsyncSparkEngine(BaseEngine):
             else:
                 audio = output
         else:
+            global_tokens = speaker['global_tokens'].detach().clone()
+            semantic_tokens = speaker['semantic_tokens'].detach().clone()
             audio = await self._clone_voice_by_tokens(
                 text=text,
-                global_tokens=speaker['global_tokens'],
-                semantic_tokens=speaker['semantic_tokens'],
+                global_tokens=global_tokens,
+                semantic_tokens=semantic_tokens,
                 reference_text=speaker['reference_text'],
                 temperature=temperature,
                 top_k=top_k,
@@ -758,7 +760,13 @@ class AsyncSparkEngine(BaseEngine):
                 split_fn=split_fn,
                 **kwargs
             )
+            del global_tokens
+            del semantic_tokens
+
         audio = (audio * 32767).astype(np.int16)
+
+        torch.cuda.empty_cache()
+
         if acoustic_tokens is not None:
             return audio, acoustic_tokens
         return audio
@@ -950,10 +958,12 @@ class AsyncSparkEngine(BaseEngine):
                 else:
                     yield (chunk * 32767).astype(np.int16)
         else:
+            global_tokens = speaker['global_tokens'].detach().clone()
+            semantic_tokens = speaker['semantic_tokens'].detach().clone()
             async for chunk in self._clone_voice_stream_by_tokens(
                     text=text,
-                    global_tokens=speaker['global_tokens'],
-                    semantic_tokens=speaker['semantic_tokens'],
+                    global_tokens=global_tokens,
+                    semantic_tokens=semantic_tokens,
                     reference_text=speaker['reference_text'],
                     pitch=pitch,
                     speed=speed,
@@ -972,8 +982,14 @@ class AsyncSparkEngine(BaseEngine):
                     **kwargs
             ):
                 yield (chunk * 32767).astype(np.int16)
+
+            del global_tokens
+            del semantic_tokens
+
         if out_acoustic_tokens is not None:
             yield out_acoustic_tokens
+
+        torch.cuda.empty_cache()
 
     async def clone_voice_async(
             self,
@@ -1012,6 +1028,7 @@ class AsyncSparkEngine(BaseEngine):
             split_fn=split_fn,
             **kwargs
         )
+        torch.cuda.empty_cache()
         return (audio * 32767).astype(np.int16)
 
     async def clone_voice_stream_async(
@@ -1061,3 +1078,5 @@ class AsyncSparkEngine(BaseEngine):
                 **kwargs
         ):
             yield (chunk * 32767).astype(np.int16)
+
+        torch.cuda.empty_cache()
