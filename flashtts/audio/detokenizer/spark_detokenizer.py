@@ -7,6 +7,7 @@ from typing import Literal
 import torch
 from ..base_model import SparkBaseModel
 from ..batch_processor import AsyncBatchEngine
+from ..utils import get_dtype
 from ...modules.encoder_decoder.feat_decoder import Decoder
 from ...modules.encoder_decoder.wave_generator import WaveGenerator
 from ...modules.speaker.speaker_encoder import SpeakerEncoder
@@ -49,7 +50,8 @@ class SparkDeTokenizer:
         self.model = SparkDeTokenizerModel.from_pretrained(
             os.path.join(model_path, "BiCodec")
         ).to(self.device)
-
+        self.device_type = device
+        self.dtype = get_dtype(self.device_type)
         self._batch_processor = AsyncBatchEngine(
             processing_function=self.batch_detokenize_async,
             batch_size=batch_size,
@@ -62,10 +64,11 @@ class SparkDeTokenizer:
             semantic_tokens: torch.Tensor,
             global_tokens: torch.Tensor
     ) -> torch.Tensor:
-        output = self.model(
-            semantic_tokens.to(self.device),
-            global_tokens.to(self.device)
-        )
+        with torch.amp.autocast(self.device_type, dtype=self.dtype):
+            output = self.model(
+                semantic_tokens.to(self.device),
+                global_tokens.to(self.device)
+            )
         return output
 
     async def batch_detokenize_async(self, requests: list[dict[str, torch.Tensor]]) -> list[dict[str, torch.Tensor]]:

@@ -12,6 +12,7 @@ import numpy as np
 import soundfile as sf
 from ..base_model import SparkBaseModel
 from ..batch_processor import AsyncBatchEngine
+from ..utils import get_dtype
 from ...modules.encoder_decoder.feat_encoder import Encoder
 from ...modules.speaker.speaker_encoder import SpeakerEncoder
 from ...modules.vq.factorized_vector_quantize import FactorizedVectorQuantize
@@ -68,6 +69,7 @@ class SparkTokenizer:
             batch_size: int = 32,
             wait_timeout: float = 0.01,
     ):
+
         self.device = torch.device(device)
         wav2vec_path = os.path.join(model_path, "wav2vec2-large-xlsr-53")
         self.wav2vec2 = Wav2Vec2Model.from_pretrained(
@@ -91,6 +93,8 @@ class SparkTokenizer:
             batch_size=batch_size,
             wait_timeout=wait_timeout
         )
+        self.device_type = device
+        self.dtype = get_dtype(self.device_type)
 
     @classmethod
     def get_ref_clip(cls, wav: np.ndarray) -> np.ndarray:
@@ -127,7 +131,7 @@ class SparkTokenizer:
 
         if sr != 16000:
             waveform = soxr.resample(waveform, sr, 16000, quality="VHQ")
-            logger.warning("输入参考音频采样率不为16000，已对其自动进行重采样。")
+            logger.warning("The input reference audio sampling rate isn’t 16,000 Hz and has been automatically resampled.")
 
         wav_len = len(waveform)
         waveform = np.array(waveform, dtype=np.float32)
@@ -149,13 +153,14 @@ class SparkTokenizer:
             return_tensors="pt",
             padding=True
         ).to(self.device)
-        output = self.wav2vec2(
-            inputs['input_values'],
-            attention_mask=inputs['attention_mask']
-        )
-        features = (
-                           output.hidden_states[11] + output.hidden_states[14] + output.hidden_states[16]
-                   ) / 3
+        with torch.amp.autocast(self.device_type, dtype=self.dtype):
+            output = self.wav2vec2(
+                inputs['input_values'],
+                attention_mask=inputs['attention_mask']
+            )
+            features = (
+                               output.hidden_states[11] + output.hidden_states[14] + output.hidden_states[16]
+                       ) / 3
         return features.detach()
 
     @torch.no_grad()
@@ -172,7 +177,8 @@ class SparkTokenizer:
 
         audio_features = self.extract_features(wav_list)
 
-        outputs = self.model(audio_features, audio_clip.to(self.device))
+        with torch.amp.autocast(self.device_type, dtype=self.dtype):
+            outputs = self.model(audio_features, audio_clip.to(self.device))
 
         if self.device.type == "cuda":
             torch.cuda.empty_cache()
