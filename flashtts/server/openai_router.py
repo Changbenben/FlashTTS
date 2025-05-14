@@ -36,7 +36,7 @@ async def list_voices(raw_request: Request):
     """List all available voices for text-to-speech"""
     engine: AutoEngine = raw_request.app.state.engine
     try:
-        voices = engine.list_roles()
+        voices = engine.list_speakers()
         return {"voices": voices}
     except Exception as e:
         logger.error(f"Error listing voices: {str(e)}")
@@ -117,7 +117,7 @@ async def create_speech(
         api_inputs['pitch'] = float_to_speed_label(request.pitch)
         api_inputs['speed'] = float_to_speed_label(request.speed)
 
-    if engine._SUPPORT_CLONE and request.voice not in engine.list_roles():
+    if engine._SUPPORT_CLONE and request.voice not in engine.list_speakers():
         # 如果传入的voice为url或者base64，将启动语音克隆，暂且不支持mega3
         if engine.engine_name == 'mega':
             err_msg = ("Openai router does not currently support the voice cloning function of mega tts, "

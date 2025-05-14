@@ -47,7 +47,7 @@ def add_model_parser(arg_parser):
     arg_parser.add_argument("--seed", type=int, default=0, help="Random seed")
     arg_parser.add_argument("--batch_size", type=int, default=1,
                             help="Max number of audio requests processed in a single batch")
-    arg_parser.add_argument("--llm_batch_size", type=int, default=256,
+    arg_parser.add_argument("--llm_batch_size", type=int, default=8,
                             help="Max number of LLM requests processed in a single batch")
     arg_parser.add_argument("--wait_timeout", type=float, default=0.01,
                             help="Timeout for dynamic batching (in seconds)")

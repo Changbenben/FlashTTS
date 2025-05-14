@@ -228,7 +228,7 @@ class AsyncSparkEngine(BaseEngine):
             llm_gpu_memory_utilization: Optional[float] = 0.6,
             cache_implementation: Optional[str] = None,
             batch_size: int = 1,
-            llm_batch_size: int = 256,
+            llm_batch_size: int = 8,
             wait_timeout: float = 0.01,
             seed: int = 0,
             **kwargs,
@@ -271,7 +271,6 @@ class AsyncSparkEngine(BaseEngine):
             batch_size=batch_size,
             wait_timeout=wait_timeout
         )
-        self.speakers = {"female": {}, "male": {}}
 
         super().__init__(
             llm_model_path=os.path.join(model_path, "LLM"),
@@ -288,11 +287,10 @@ class AsyncSparkEngine(BaseEngine):
             stop_tokens=["<|end_semantic_token|>"],
             **kwargs
         )
-
-    def list_roles(self) -> list[str]:
-        roles = list(self.speakers.keys())
-        roles.sort()
-        return roles
+        # 添加默认角色
+        for name in ['female', 'male']:
+            if name not in self.speakers:
+                self.speakers[name] = {}
 
     @classmethod
     def apply_prompt(
@@ -591,10 +589,7 @@ class AsyncSparkEngine(BaseEngine):
         if last_audio is not None:
             yield last_audio[-cross_fade_samples:]
 
-    async def add_speaker(self, name: str, audio, reference_text: Optional[str] = None):
-        if name in self.speakers:
-            logger.warning(f"{name} 音频已存在，将使用新的音频覆盖。")
-
+    async def _add_speaker(self, name: str, audio, reference_text: Optional[str] = None):
         if name not in ["female", "male"]:
             tokens = await self._tokenize(
                 audio
@@ -606,12 +601,6 @@ class AsyncSparkEngine(BaseEngine):
             }
         else:
             self.speakers[name] = {}
-
-    async def delete_speaker(self, name: str):
-        if name not in self.speakers:
-            logger.warning(f"{name} 角色不存在。")
-            return
-        self.speakers.pop(name)
 
     async def _control_generate(
             self,
@@ -717,7 +706,6 @@ class AsyncSparkEngine(BaseEngine):
             logger.error(err_msg)
             raise ValueError(err_msg)
         self.set_seed(seed=self.seed)
-        speaker = self.speakers[name]
         acoustic_tokens = None
         if name in ["female", "male"]:
             output = await self._control_generate(
@@ -743,13 +731,14 @@ class AsyncSparkEngine(BaseEngine):
             else:
                 audio = output
         else:
-            global_tokens = speaker['global_tokens'].detach().clone()
-            semantic_tokens = speaker['semantic_tokens'].detach().clone()
+            speaker_data = await self.get_speaker(name)
+            global_tokens = speaker_data['global_tokens'].detach().clone()
+            semantic_tokens = speaker_data['semantic_tokens'].detach().clone()
             audio = await self._clone_voice_by_tokens(
                 text=text,
                 global_tokens=global_tokens,
                 semantic_tokens=semantic_tokens,
-                reference_text=speaker['reference_text'],
+                reference_text=speaker_data['reference_text'],
                 temperature=temperature,
                 top_k=top_k,
                 top_p=top_p,
@@ -925,12 +914,7 @@ class AsyncSparkEngine(BaseEngine):
             return_acoustic_tokens: bool = False,
             **kwargs) -> AsyncIterator[np.ndarray | SparkAcousticTokens]:
         name = name or "female"
-        if name not in self.speakers:
-            err_msg = f"{name} 角色不存在。"
-            logger.error(err_msg)
-            raise ValueError(err_msg)
         self.set_seed(seed=self.seed)
-        speaker = self.speakers[name]
         out_acoustic_tokens = None
         if name in ['female', 'male']:
             async for chunk in self._control_stream_generate(
@@ -958,13 +942,16 @@ class AsyncSparkEngine(BaseEngine):
                 else:
                     yield (chunk * 32767).astype(np.int16)
         else:
-            global_tokens = speaker['global_tokens'].detach().clone()
-            semantic_tokens = speaker['semantic_tokens'].detach().clone()
+            speaker_data = await self.get_speaker(name)
+            if speaker_data is None:
+                raise ValueError(F'The role "{name}" does not exist.')
+            global_tokens = speaker_data['global_tokens'].detach().clone()
+            semantic_tokens = speaker_data['semantic_tokens'].detach().clone()
             async for chunk in self._clone_voice_stream_by_tokens(
                     text=text,
                     global_tokens=global_tokens,
                     semantic_tokens=semantic_tokens,
-                    reference_text=speaker['reference_text'],
+                    reference_text=speaker_data['reference_text'],
                     pitch=pitch,
                     speed=speed,
                     temperature=temperature,

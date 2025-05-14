@@ -119,7 +119,7 @@ if __name__ == '__main__':
 | 类 / 方法                     | 描述                         |
 |----------------------------|----------------------------|
 | `AsyncOrpheusEngine`       | 封装`Orpheus-TTS`初始化         |
-| `list_roles`               | 查看已有角色列表                   |
+| `list_speakers`            | 查看已有角色列表                   |
 | `speak_async`              | 异步文本合成，返回音频数据(np.int16)    |
 | `speak_stream_async`       | 异步流式合成，按音频块迭代返回            |
 | `multi_speak_async`        | 多角色语音合成，在父类`BaseEngine`中定义 |
@@ -147,7 +147,7 @@ if __name__ == '__main__':
 
 ### 主要接口参数说明
 
-#### 1. `list_roles`查看已有角色列表
+#### 1. `list_speakers`查看已有角色列表
 
 返回`list[str]`
 

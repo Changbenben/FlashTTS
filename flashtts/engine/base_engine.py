@@ -24,7 +24,7 @@ class Engine(ABC):
     _SUPPORT_SPEAK = False
 
     @abstractmethod
-    def list_roles(self) -> list[str]:
+    def list_speakers(self) -> list[str]:
         ...
 
     @abstractmethod
@@ -33,6 +33,18 @@ class Engine(ABC):
 
     @abstractmethod
     async def delete_speaker(self, name: str):
+        ...
+
+    @abstractmethod
+    async def get_speaker(self, name: str):
+        ...
+
+    @abstractmethod
+    def save_speakers(self, save_path: str):
+        ...
+
+    @abstractmethod
+    async def load_speakers(self, load_path: str):
         ...
 
     @abstractmethod
@@ -156,7 +168,7 @@ class BaseEngine(Engine):
             torch_dtype: Literal['float16', "bfloat16", 'float32', 'auto'] = "auto",
             llm_gpu_memory_utilization: Optional[float] = 0.6,
             cache_implementation: Optional[str] = None,
-            llm_batch_size: int = 256,
+            llm_batch_size: int = 8,
             seed: int = 0,
             stop_tokens: Optional[list[str]] = None,
             stop_token_ids: Optional[list[int]] = None,
@@ -181,9 +193,54 @@ class BaseEngine(Engine):
         self._batch_size = llm_batch_size
         self.zh_normalizer = ZhNormalizer(overwrite_cache=False, remove_erhua=False, remove_interjections=False)
         self.en_normalizer = EnNormalizer(overwrite_cache=False)
+        self.speakers = {}
+        self._lock = asyncio.Lock()
 
-    def list_roles(self) -> list[str]:
-        raise NotImplementedError(f"List_roles not implemented for {self.__class__.__name__}")
+    def list_speakers(self) -> list[str]:
+        names = []
+        for name in self.speakers:
+            if name not in names:
+                names.append(name)
+        return names
+
+    async def _add_speaker(self, name: str, audio, reference_text: Optional[str] = None):
+        raise NotImplementedError(f"_add_speaker not implemented for {self.__class__.__name__}")
+
+    async def add_speaker(self, name: str, audio, reference_text: Optional[str] = None):
+        async with self._lock:
+            if name in self.speakers:
+                logger.warning(f"The audio role '{name}' already exists and will be overwritten.")
+            await self._add_speaker(name, audio, reference_text=reference_text)
+
+    async def delete_speaker(self, name: str):
+        async with self._lock:
+            if name not in self.speakers:
+                logger.warning(f"The role '{name}' does not exist.")
+            del self.speakers[name]
+
+    async def get_speaker(self, name: str):
+        async with self._lock:
+            if name not in self.speakers:
+                logger.warning(f"The audio role '{name}' does not exist.")
+                return None
+            data = self.speakers[name]
+        return data
+
+    def save_speakers(self, save_path: str):
+        save_data = {
+            "class": self.__class__.__name__,
+            "speakers": self.speakers,
+        }
+        torch.save(save_data, save_path)
+
+    async def load_speakers(self, load_path: str):
+        speakers = torch.load(load_path, map_location="cpu")
+        speaker_class = speakers.get("class", None)
+        if speaker_class is None or speaker_class != self.__class__.__name__:
+            logger.warning(f"The given speaker file does not belong to the current engine and will not be loaded. "
+                           f"File's engine: {speaker_class}, current engine: {self.__class__.__name__}")
+        async with self._lock:
+            self.speakers.update(speakers.get("speakers", {}))
 
     def shutdown(self):
         self.generator.shutdown()
@@ -238,24 +295,18 @@ class BaseEngine(Engine):
         )
 
     def _parse_multi_speak_text(self, text: str) -> list[dict[str, str]]:
-        if len(self.list_roles()) == 0:
-            msg = f"{self.__class__.__name__} 中角色库为空，无法实现多角色语音合成。"
+        if len(self.list_speakers()) == 0:
+            msg = f"The role library in {self.__class__.__name__} is empty, making multi-role speech synthesis impossible."
             logger.error(msg)
             raise RuntimeError(msg)
 
-        segments = parse_multi_speaker_text(text, self.list_roles())
+        segments = parse_multi_speaker_text(text, self.list_speakers())
         if len(segments) == 0:
-            msg = f"多角色文本解析结果为空，请检查输入文本格式：{text}"
+            msg = f"The multi-role text parsing result is empty. Please check the input text format: {text}"
             logger.error(msg)
             raise RuntimeError(msg)
 
         return segments
-
-    async def add_speaker(self, name: str, audio, reference_text: Optional[str] = None):
-        raise NotImplementedError(f"add_speaker not implemented for {self.__class__.__name__}")
-
-    async def delete_speaker(self, name: str):
-        raise NotImplementedError(f"delete_speaker not implemented for {self.__class__.__name__}")
 
     async def speak_async(
             self,

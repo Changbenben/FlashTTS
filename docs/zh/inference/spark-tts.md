@@ -173,7 +173,7 @@ engine.write_audio(audio, "stream.wav")
 | `AsyncSparkEngine`         | 封装`Spark-TTS`初始化           |
 | `add_speaker`              | 添加内置音频角色                   |
 | `delete_speaker`           | 删除内置角色                     |
-| `list_roles`               | 查看已有角色列表                   |
+| `list_speakers`            | 查看已有角色列表                   |
 | `speak_async`              | 异步文本合成，返回音频数据(np.int16)    |
 | `speak_stream_async`       | 异步流式合成，按音频块迭代返回            |
 | `clone_voice_async`        | 异步语音克隆，基于参考音频生成语音          |
@@ -217,7 +217,7 @@ engine.write_audio(audio, "stream.wav")
 |--------|-------|-----|---------|
 | `name` | `str` | —   | 待删除的角色名 |
 
-#### 3. `list_roles`查看已有角色列表
+#### 3. `list_speakers`查看已有角色列表
 
 返回`list[str]`
 

@@ -58,7 +58,7 @@ class AutoEngine(Engine):
             llm_gpu_memory_utilization: Optional[float] = 0.6,
             cache_implementation: Optional[str] = None,
             batch_size: int = 1,
-            llm_batch_size: int = 256,
+            llm_batch_size: int = 8,
             wait_timeout: float = 0.01,
             seed: int = 0,
             **kwargs,
@@ -146,8 +146,14 @@ class AutoEngine(Engine):
     def write_audio(self, audio: np.ndarray, filepath: str):
         self._engine.write_audio(audio, filepath)
 
-    def list_roles(self) -> list[str]:
-        return self._engine.list_roles()
+    def list_speakers(self) -> list[str]:
+        return self._engine.list_speakers()
+
+    def save_speakers(self, save_path: str):
+        self._engine.save_speakers(save_path)
+
+    async def load_speakers(self, load_path: str):
+        await self._engine.load_speakers(load_path)
 
     async def add_speaker(self, name: str, audio, reference_text: Optional[str] = None):
         if not self._SUPPORT_CLONE:
@@ -156,6 +162,10 @@ class AutoEngine(Engine):
 
     async def delete_speaker(self, name: str):
         await self._engine.delete_speaker(name)
+
+    async def get_speaker(self, name: str):
+        data = await self._engine.get_speaker(name)
+        return data
 
     async def speak_async(
             self,

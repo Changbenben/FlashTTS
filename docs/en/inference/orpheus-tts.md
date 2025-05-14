@@ -123,7 +123,7 @@ methods:
 | Class / Method             | Description                                      |
 |----------------------------|--------------------------------------------------|
 | `AsyncOrpheusEngine`       | Initializes the Orpheus-TTS engine               |
-| `list_roles`               | Returns a list of available speaker roles        |
+| `list_speakers`               | Returns a list of available speaker roles        |
 | `speak_async`              | Async text-to-speech synthesis                   |
 | `speak_stream_async`       | Async streaming synthesis                        |
 | `multi_speak_async`        | Multi-speaker synthesis, defined in BaseEngine   |
@@ -151,7 +151,7 @@ methods:
 
 ### Main Method Parameter Descriptions
 
-#### 1. `list_roles`: View available roles
+#### 1. `list_speakers`: View available roles
 
 Returns `list[str]`
 

@@ -174,7 +174,7 @@ Key classes and methods:
 | `AsyncSparkEngine`         | Initializes Spark-TTS                     |
 | `add_speaker`              | Add custom speaker                        |
 | `delete_speaker`           | Remove speaker                            |
-| `list_roles`               | List all speakers                         |
+| `list_speakers`               | List all speakers                         |
 | `speak_async`              | Async text-to-speech, returns audio array |
 | `speak_stream_async`       | Async streaming TTS                       |
 | `clone_voice_async`        | Async voice cloning                       |
@@ -222,7 +222,7 @@ Key classes and methods:
 
 ---
 
-### 3. `list_roles` – List Speakers
+### 3. `list_speakers` – List Speakers
 
 Returns a `list[str]` containing all current speaker names.
 

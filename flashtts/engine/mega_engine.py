@@ -36,7 +36,7 @@ class AsyncMega3Engine(BaseEngine):
             llm_gpu_memory_utilization: Optional[float] = 0.6,
             cache_implementation: Optional[str] = None,
             batch_size: int = 1,
-            llm_batch_size: int = 256,
+            llm_batch_size: int = 8,
             seed: int = 0,
             **kwargs):
         self.seed = seed
@@ -62,12 +62,6 @@ class AsyncMega3Engine(BaseEngine):
             **kwargs
         )
         self.speech_start_idx = self.generator.tokenizer.encode("<Reserved_TTS_0>")[0]
-        self.speakers = {}
-
-    def list_roles(self) -> list[str]:
-        roles = list(self.speakers.keys())
-        roles.sort()
-        return roles
 
     def apply_prompt(self, text: str) -> list[int]:
         prompt = '<BOT>' + text + '<BOS>'
@@ -192,6 +186,7 @@ class AsyncMega3Engine(BaseEngine):
 
         audio = self.combine_audio_segments(pred_wav_list).astype(float)
         audio = (audio * 32767).astype(np.int16)
+        torch.cuda.empty_cache()
         return audio
 
     async def clone_voice_async(
@@ -240,9 +235,7 @@ class AsyncMega3Engine(BaseEngine):
         )
         return audio
 
-    async def add_speaker(self, name: str, audio: tuple, reference_text: Optional[str] = None):
-        if name in self.speakers:
-            logger.warning(f"{name} 音频已存在，将使用新的音频覆盖。")
+    async def _add_speaker(self, name: str, audio: tuple, reference_text: Optional[str] = None):
         assert len(
             audio) == 2, "The reference audio for MegaTTS3 requires two files to be provided: a WAV audio file and an encoded NPY file."
 
@@ -251,12 +244,6 @@ class AsyncMega3Engine(BaseEngine):
             latent_file=audio[1],
         )
         self.speakers[name] = resource_context
-
-    async def delete_speaker(self, name: str):
-        if name not in self.speakers:
-            logger.warning(f"{name} 角色不存在。")
-            return
-        self.speakers.pop(name)
 
     async def speak_async(
             self,
@@ -280,15 +267,13 @@ class AsyncMega3Engine(BaseEngine):
             logger.warning("MegaTTS does not support adjusting pitch and speed.")
         if name is None and len(self.speakers) > 0:
             name = list(self.speakers.keys())[0]
-        if name not in self.speakers:
-            err_msg = f"{name} 角色不存在。"
-            logger.error(err_msg)
-            raise ValueError(err_msg)
         self.set_seed(seed=self.seed)
-        speaker = self.speakers[name]
+        speaker_data = await self.get_speaker(name)
+        if speaker_data is None:
+            raise ValueError(F'The role "{name}" does not exist.')
         audio = await self._clone_voice_from_ref(
             text=text,
-            resource_context=speaker,
+            resource_context=speaker_data,
             temperature=temperature,
             top_k=top_k,
             top_p=top_p,

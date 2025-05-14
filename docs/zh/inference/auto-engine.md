@@ -100,7 +100,7 @@ Initializing `AutoEngine(engine=spark)` with config: (model_path='…', max_leng
 
 将 `audio` 写入指定文件（WAV 格式）。
 
-#### `list_roles() → list[str]`
+#### `list_speakers() → list[str]`
 
 返回当前引擎中可用的角色列表。
 

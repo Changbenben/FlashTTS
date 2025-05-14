@@ -128,7 +128,7 @@ Key classes and methods:
 | `AsyncMega3Engine`  | Wrapper for initializing MegaTTS3 (note: streaming is not supported) |
 | `add_speaker`       | Register a built-in audio role                                       |
 | `delete_speaker`    | Remove a registered role                                             |
-| `list_roles`        | List currently registered roles                                      |
+| `list_speakers`        | List currently registered roles                                      |
 | `speak_async`       | Async TTS, returns full audio (must add roles first)                 |
 | `clone_voice_async` | Async voice cloning with reference audio                             |
 | `multi_speak_async` | Multi-speaker synthesis (inherited from `BaseEngine`)                |
@@ -167,7 +167,7 @@ Key classes and methods:
 |-----------|-------|---------|------------------------|
 | `name`    | `str` | —       | Speaker name to delete |
 
-#### 3. `list_roles`
+#### 3. `list_speakers`
 
 Returns: `list[str]`
 

@@ -102,7 +102,7 @@ These interfaces are supported by all engines:
 
 Writes `audio` to the specified file in WAV format.
 
-### `list_roles() → list[str]`
+### `list_speakers() → list[str]`
 
 Returns a list of available speaker roles:
 

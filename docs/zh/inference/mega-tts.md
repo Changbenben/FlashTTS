@@ -126,7 +126,7 @@ if __name__ == '__main__':
 | `AsyncMega3Engine`  | 封装`MegaTTS3`初始化，MegaTTS不支持流式接口。       |
 | `add_speaker`       | 添加内置音频角色                              |
 | `delete_speaker`    | 删除内置角色                                |
-| `list_roles`        | 查看已有角色列表                              |
+| `list_speakers`     | 查看已有角色列表                              |
 | `speak_async`       | 异步文本合成，返回音频数据(np.int16)，需要添加音频角色后才可使用 |
 | `clone_voice_async` | 异步语音克隆，基于参考音频生成语音                     |
 | `multi_speak_async` | 多角色语音合成，在父类`BaseEngine`中定义            |
@@ -165,7 +165,7 @@ if __name__ == '__main__':
 |--------|-------|-----|---------|
 | `name` | `str` | —   | 待删除的角色名 |
 
-#### 3. `list_roles`查看已有角色列表
+#### 3. `list_speakers`查看已有角色列表
 
 返回`list[str]`
 

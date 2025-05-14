@@ -2,9 +2,10 @@
 # Project : Fast-Spark-TTS
 # Time    : 2025/4/7 16:14
 # Author  : Hui Huang
+import os
 from pathlib import Path
 from typing import Optional, Annotated, Literal
-from fastapi import HTTPException, Request, APIRouter, UploadFile, File, Form, Depends
+from fastapi import HTTPException, Request, APIRouter, UploadFile, File, Form, Depends, BackgroundTasks
 from fastapi.responses import StreamingResponse, JSONResponse, Response, FileResponse
 from .protocol import CloneRequest, SpeakRequest, MultiSpeakRequest
 from .utils.audio_writer import StreamingAudioWriter
@@ -24,6 +25,16 @@ base_router = APIRouter(
 )
 
 TEMPLATES_DIR = Path(__file__).parent / "templates"
+
+SPEAKER_TMP_PATH = "SPEAKER.bin.tmp"
+
+
+def _save_to_disk_sync(engine: AutoEngine, db_path):
+    def task():
+        engine.save_speakers(SPEAKER_TMP_PATH)
+        os.replace(SPEAKER_TMP_PATH, db_path)
+
+    return task
 
 
 @base_router.get("/")
@@ -46,7 +57,7 @@ async def audio_roles(raw_request: Request):
             "success": True,
             "info": {
                 "model": engine.engine_name,
-                "roles": engine.list_roles(),
+                "roles": engine.list_speakers(),
                 "sample_rate": engine.SAMPLE_RATE,
             }
         })
@@ -55,6 +66,7 @@ async def audio_roles(raw_request: Request):
 @base_router.post("/add_speaker")
 async def add_speaker(
         raw_request: Request,
+        background_tasks: BackgroundTasks,
         name: str = Form(..., description="The name of the speaker"),
         audio: Optional[str] = Form(None,
                                     description="A reference audio sample of the speaker (URL or base64 string). Use this or `audio_file`"),
@@ -88,6 +100,7 @@ async def add_speaker(
         err_msg = f'Failed to add the voice character "{name}": {str(e)}'
         logger.error(err_msg)
         raise HTTPException(status_code=500, detail=err_msg)
+    background_tasks.add_task(_save_to_disk_sync(engine=engine, db_path=raw_request.app.state.db_path))
     return JSONResponse(
         content={
             "success": True,
@@ -98,6 +111,7 @@ async def add_speaker(
 @base_router.post("/delete_speaker")
 async def delete_speaker(
         raw_request: Request,
+        background_tasks: BackgroundTasks,
         name: str = Form(..., description="The name of the speaker")):
     engine: AutoEngine = raw_request.app.state.engine
     if engine.engine_name == 'orpheus':
@@ -110,6 +124,7 @@ async def delete_speaker(
         err_msg = f'Failed to remove the voice character "{name}": {str(e)}'
         logger.error(err_msg)
         raise HTTPException(status_code=500, detail=err_msg)
+    background_tasks.add_task(_save_to_disk_sync(engine=engine, db_path=raw_request.app.state.db_path))
     return JSONResponse(
         content={
             "success": True,
@@ -247,7 +262,7 @@ async def clone_voice(
 
 @base_router.get("/audio_roles")
 async def audio_roles(raw_request: Request):
-    roles = raw_request.app.state.engine.list_roles()
+    roles = raw_request.app.state.engine.list_speakers()
     return JSONResponse(
         content={
             "success": True,
@@ -258,8 +273,8 @@ async def audio_roles(raw_request: Request):
 @base_router.post("/speak")
 async def speak(req: SpeakRequest, raw_request: Request):
     engine: AutoEngine = raw_request.app.state.engine
-    if req.name not in engine.list_roles():
-        err_msg = f'"{req.name}" is not in the list of existing roles: {", ".join(engine.list_roles())}'
+    if req.name not in engine.list_speakers():
+        err_msg = f'"{req.name}" is not in the list of existing roles: {", ".join(engine.list_speakers())}'
         logger.warning(err_msg)
         raise HTTPException(status_code=500, detail=err_msg)
 
