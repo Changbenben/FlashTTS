@@ -2,6 +2,7 @@
 # Time      :2025/3/29 11:16
 # Author    :Hui Huang
 import asyncio
+import json
 import math
 import os.path
 import re
@@ -42,15 +43,18 @@ LEVELS_MAP = {
     "very_high": 4,
 }
 
-GENDER_MAP = {
+GENDER_MAP: dict[Literal["male", "female"], int] = {
     "female": 0,
     "male": 1,
 }
+
+ID2GENDER = {v: k for k, v in GENDER_MAP.items()}
 
 
 @dataclass
 class SparkAcousticTokens:
     prompt: str
+    gender: Literal["female", "male"]
     global_tokens: Optional[torch.Tensor] = None
 
     def __post_init__(self):
@@ -73,15 +77,21 @@ class SparkAcousticTokens:
             )
             self.global_tokens = global_token_ids
 
+    def to_dict(self) -> dict[str, str]:
+        return {
+            "prompt": self.prompt,
+            "gender": self.gender
+        }
+
     def save(self, filepath: str):
         with open(filepath, 'w', encoding='utf8') as w:
-            w.write(self.prompt)
+            w.write(json.dumps(self.to_dict(), ensure_ascii=False, indent=2))
 
     @classmethod
     def load(cls, filepath: str):
         with open(filepath, 'r', encoding='utf8') as r:
-            prompt = r.read()
-        return cls(prompt=prompt)
+            data = json.load(r)
+        return cls(**data)
 
 
 def process_prompt(
@@ -619,6 +629,18 @@ class AsyncSparkEngine(BaseEngine):
             acoustic_tokens: Optional[SparkAcousticTokens | str] = None,
             return_acoustic_tokens: bool = False,
             **kwargs):
+        gender: Literal["female", "male"] = gender if gender in ["female", "male"] else "female"
+
+        if acoustic_tokens is not None and isinstance(acoustic_tokens, str):
+            acoustic_tokens = SparkAcousticTokens.load(acoustic_tokens)
+
+        if acoustic_tokens is not None:
+            if acoustic_tokens.gender != gender:
+                logger.warning(
+                    f"The provided `acoustic_tokens` belong to the `{acoustic_tokens.gender}`, but the specified gender is {gender}. "
+                    f"The `acoustic_tokens` will therefore not be used.")
+                acoustic_tokens = None
+
         segments = self.preprocess_text(
             text,
             window_size=window_size,
@@ -654,14 +676,11 @@ class AsyncSparkEngine(BaseEngine):
                 "completion": generated['completion']
             }
 
-        if acoustic_tokens is not None and isinstance(acoustic_tokens, str):
-            acoustic_tokens = SparkAcousticTokens(acoustic_tokens)
-
         audios = []
         if acoustic_tokens is None:
             # 如果没有传入音色，使用第一段生成音色token，将其与后面片段一起拼接，使用相同音色token引导输出semantic tokens。
             first_output = await generate_audio(segments[0], acoustic_token=None)
-            acoustic_tokens = SparkAcousticTokens(first_output['completion'])
+            acoustic_tokens = SparkAcousticTokens(first_output['completion'], gender=gender)
             audios.append(first_output['audio'])
             segments = segments[1:]
 
@@ -706,7 +725,7 @@ class AsyncSparkEngine(BaseEngine):
             logger.error(err_msg)
             raise ValueError(err_msg)
         self.set_seed(seed=self.seed)
-        acoustic_tokens = None
+        out_acoustic_tokens = None
         if name in ["female", "male"]:
             output = await self._control_generate(
                 text=text,
@@ -727,7 +746,7 @@ class AsyncSparkEngine(BaseEngine):
             )
             if return_acoustic_tokens and isinstance(output, tuple):
                 audio = output[0]
-                acoustic_tokens = output[1]
+                out_acoustic_tokens = output[1]
             else:
                 audio = output
         else:
@@ -756,8 +775,8 @@ class AsyncSparkEngine(BaseEngine):
 
         torch.cuda.empty_cache()
 
-        if acoustic_tokens is not None:
-            return audio, acoustic_tokens
+        if out_acoustic_tokens is not None:
+            return audio, out_acoustic_tokens
         return audio
 
     async def _control_stream_generate(
@@ -782,6 +801,8 @@ class AsyncSparkEngine(BaseEngine):
             return_acoustic_tokens: bool = False,
             **kwargs
     ):
+        gender: Literal["female", "male"] = gender if gender in ["female", "male"] else "female"
+
         if audio_chunk_duration < 0.5:
             err_msg = "audio_chunk_duration at least 0.5 seconds"
             logger.error(err_msg)
@@ -792,7 +813,14 @@ class AsyncSparkEngine(BaseEngine):
             raise ValueError(err_msg)
 
         if acoustic_tokens is not None and isinstance(acoustic_tokens, str):
-            acoustic_tokens = SparkAcousticTokens(acoustic_tokens)
+            acoustic_tokens = SparkAcousticTokens.load(acoustic_tokens)
+
+        if acoustic_tokens is not None:
+            if acoustic_tokens.gender != gender:
+                logger.warning(
+                    f"The provided `acoustic_tokens` belong to the `{acoustic_tokens.gender}`, but the specified gender is {gender}. "
+                    f"The `acoustic_tokens` will therefore not be used.")
+                acoustic_tokens = None
 
         audio_tokenizer_frame_rate = 50
         max_chunk_size = math.ceil(max_audio_chunk_duration * audio_tokenizer_frame_rate)
@@ -840,7 +868,7 @@ class AsyncSparkEngine(BaseEngine):
                         r"(<\|start_acoustic_token\|>.*?<\|end_global_token\|>)",
                         completion)
                     if len(acoustics) > 0:
-                        acoustic_tokens = SparkAcousticTokens(acoustics[0])
+                        acoustic_tokens = SparkAcousticTokens(acoustics[0], gender=gender)
                         completion = ""
                     else:
                         continue

@@ -4,7 +4,7 @@
 # Author  : Hui Huang
 from fastapi import HTTPException, Request, APIRouter
 from fastapi.responses import JSONResponse, Response, StreamingResponse
-from .protocol import OpenAISpeechRequest, ModelCard, ModelList
+from .protocol import OpenAISpeechRequest, ModelCard, ModelList, StateInfo
 from .utils.audio_writer import StreamingAudioWriter
 from .utils.utils import generate_audio, generate_audio_stream, load_base64_or_url
 from ..engine import AutoEngine
@@ -21,11 +21,11 @@ openai_router = APIRouter(
 @openai_router.get("/models")
 async def list_models(raw_request: Request):
     """List all available models"""
-    model_name: str = raw_request.app.state.model_name
+    state_info: StateInfo = raw_request.app.state.state_info
 
     # Create standard model list
     models = ModelList(data=[
-        ModelCard(id=model_name)
+        ModelCard(id=state_info.model_name)
     ])
 
     return JSONResponse(content=models.model_dump())
@@ -82,8 +82,8 @@ async def create_speech(
         client_request: Request
 ):
     engine: AutoEngine = client_request.app.state.engine
-    model_name: str = client_request.app.state.model_name
-    if request.model not in [model_name]:
+    state_info: StateInfo = client_request.app.state.state_info
+    if request.model not in [state_info.model_name]:
         raise HTTPException(
             status_code=400,
             detail={
@@ -133,6 +133,18 @@ async def create_speech(
             tts_fn = engine.clone_voice_async
     else:
         api_inputs['name'] = request.voice
+        # 判断是否需要保存音色
+        if state_info.fix_voice and engine.engine_name == 'spark':
+            api_inputs['name'] = api_inputs['name'] or "female"
+            if state_info.acoustic_tokens is None:
+                state_info.init_acoustic_tokens()
+            if api_inputs['name'] in ['female', 'male']:
+                # 只有这两个内置角色需要持久化音色
+                if state_info.acoustic_tokens[api_inputs['name']] is None:
+                    api_inputs['return_acoustic_tokens'] = True
+                else:
+                    api_inputs['return_acoustic_tokens'] = False
+                    api_inputs['acoustic_tokens'] = state_info.acoustic_tokens[api_inputs['name']]
         if request.stream:
             tts_fn = engine.speak_stream_async
         else:
@@ -165,6 +177,10 @@ async def create_speech(
             audio_data = await tts_fn(
                 **api_inputs
             )
+            if isinstance(audio_data, tuple):
+                if state_info.acoustic_tokens is not None:
+                    state_info.acoustic_tokens[api_inputs['name']] = audio_data[1]
+                audio_data = audio_data[0]
         except Exception as e:
             logger.warning(f"Voice synthesis for the role failed: {e}")
             raise HTTPException(status_code=500, detail=str(e))

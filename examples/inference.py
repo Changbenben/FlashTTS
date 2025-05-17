@@ -178,8 +178,8 @@ async def retain_acoustic_example(engine: AutoEngine):
         name="female",
         return_acoustic_tokens=True
     )
-    # 2. 真巧，这是我想要的音色，直接保存为txt
-    tokens.save("acoustic_tokens.txt")
+    # 2. 真巧，这是我想要的音色，直接保存为json
+    tokens.save("acoustic_tokens.json")
     # 同时保存第一次生成的音频，以便对比
     engine.write_audio(wav, "first.wav")
 
@@ -187,7 +187,7 @@ async def retain_acoustic_example(engine: AutoEngine):
     wav = await engine.speak_async(
         text="国际局势中，某国领导人围绕地区冲突停火问题展开对话，双方同意停止攻击对方能源设施并推动谈判，但对全面停火提议的落实仍存分歧。",
         name="female",
-        acoustic_tokens=SparkAcousticTokens.load("acoustic_tokens.txt"),
+        acoustic_tokens=SparkAcousticTokens.load("acoustic_tokens.json"),
     )
     engine.write_audio(wav, "second.wav")
     # 4. 试听first.wav和second.wav，惊奇发现，这两个音频的音色是一致的
@@ -212,16 +212,16 @@ async def retain_acoustic_stream_example(engine: AutoEngine):
             audios.append(chunk)
     audio = np.concatenate(audios)
 
-    # 2. 真巧，这是我想要的音色，直接保存为txt
+    # 2. 真巧，这是我想要的音色，直接保存为json
     engine.write_audio(audio, "first.wav")
-    acoustic_tokens.save("acoustic_tokens.txt")
+    acoustic_tokens.save("acoustic_tokens.json")
 
     # 3. 加载保存的音色，生成第二个音频
     audios = []
     async for chunk in engine.speak_stream_async(
             text="今日是二零二五年三月十九日，国内外热点事件聚焦于国际局势、经济政策及社会民生领域。",
             name="female",
-            acoustic_tokens=SparkAcousticTokens.load("acoustic_tokens.txt")
+            acoustic_tokens=SparkAcousticTokens.load("acoustic_tokens.json")
     ):
         audios.append(chunk)
 

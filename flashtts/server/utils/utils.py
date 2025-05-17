@@ -10,7 +10,9 @@ import numpy as np
 from fastapi import HTTPException
 
 from .audio_writer import StreamingAudioWriter
+from ... import SparkAcousticTokens
 from ...logger import get_logger
+from ..protocol import StateInfo
 
 logger = get_logger()
 
@@ -66,15 +68,20 @@ async def load_latent_file(latent_file):
 
 
 async def generate_audio_stream(generator, data, writer: StreamingAudioWriter, raw_request):
+    state_info: StateInfo = raw_request.app.state.state_info
+
     try:
         async for chunk in generator(**data):
             # Check if client is still connected
             if await raw_request.is_disconnected():
                 logger.info("Client disconnected, stopping audio generation")
                 break
-
-            audio = writer.write_chunk(chunk, finalize=False)
-            yield audio
+            if state_info.fix_voice and data.get("return_acoustic_tokens", False) and isinstance(chunk, SparkAcousticTokens):
+                if state_info.acoustic_tokens[data['name']] is None:
+                    state_info.acoustic_tokens[data['name']] = chunk
+            else:
+                audio = writer.write_chunk(chunk, finalize=False)
+                yield audio
         yield writer.write_chunk(finalize=True)
     except Exception as e:
         try:

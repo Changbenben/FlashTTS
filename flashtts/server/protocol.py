@@ -6,6 +6,23 @@ import time
 from typing import Literal, Optional, List
 
 from pydantic import BaseModel, Field
+from dataclasses import dataclass
+from ..engine import SparkAcousticTokens
+
+
+@dataclass
+class StateInfo:
+    model_name: Optional[str] = None
+    db_path: Optional[str] = None
+    fix_voice: bool = False
+    acoustic_tokens: Optional[dict[str, SparkAcousticTokens | None]] = None
+
+    def init_acoustic_tokens(self):
+        if self.acoustic_tokens is None:
+            self.acoustic_tokens = {
+                "female": None,
+                "male": None
+            }
 
 
 # 定义支持多种方式传入参考音频的请求协议

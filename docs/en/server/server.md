@@ -18,6 +18,7 @@
    --torch_dtype "bfloat16" \ # Spark-TTS does not support bfloat16 on all devices; use float32 if needed
    --max_length 32768 \
    --llm_gpu_memory_utilization 0.6 \
+   --fix_voice \ # Whether to fix the spark-tts timbre (female and male)
    --host 0.0.0.0 \
    --port 8000
    ```
@@ -89,6 +90,7 @@
 | `--wait_timeout`                | float | Timeout (in seconds) for dynamic batching                                                                                                         | 0.01                    |
 | `--host`                        | str   | Host address to bind                                                                                                                              | `0.0.0.0`               |
 | `--port`                        | int   | Port number to listen on                                                                                                                          | 8000                    |
+| `--fix_voice`                   | bool  | Fixes the female and male timbres in the spark-tts model, ensuring they remain unchanged.                                                         | False                   |
 
 ---
 

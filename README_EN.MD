@@ -161,9 +161,14 @@ Server deployment:
  --torch_dtype "bfloat16" \ 
  --max_length 32768 \
  --llm_gpu_memory_utilization 0.6 \
+ --fix_voice \  # Whether to fix the spark-tts timbre (female and male)
  --host 0.0.0.0 \
  --port 8000
  ```
+
+Web address: `http://localhost:8000`
+
+Interface document address: `http://localhost:8000/docs`
 
 For detailed deployment，please refer to: [server.md](docs/en/server/server.md)
 

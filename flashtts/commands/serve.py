@@ -18,6 +18,7 @@ from flashtts.logger import get_logger
 from flashtts.server.base_router import base_router, SPEAKER_TMP_PATH
 from flashtts.server.openai_router import openai_router
 from flashtts.commands.utils import add_model_parser
+from flashtts.server.protocol import StateInfo
 
 logger = get_logger()
 
@@ -132,8 +133,11 @@ def build_app(args) -> FastAPI:
         await warmup_engine(engine)
         # 将 engine 保存到 app.state 中，方便路由中使用
         app.state.engine = engine
-        app.state.model_name = args.model_name or engine.engine_name
-        app.state.db_path = args.db_path
+        app.state.state_info = StateInfo(
+            model_name=args.model_name or engine.engine_name,
+            db_path=args.db_path,
+            fix_voice=args.fix_voice
+        )
         yield
 
         if os.path.exists(SPEAKER_TMP_PATH):
@@ -194,7 +198,12 @@ class ServerCommand(BaseCLICommand):
             "--api_key",
             type=str,
             default=None,
-            help="API key for request authentication",
+            help="API key for request authentication"
+        )
+        serve_parser.add_argument(
+            "--fix_voice",
+            action="store_true",
+            help="Fixes the female and male timbres in the spark-tts model, ensuring they remain unchanged."
         )
 
         serve_parser.add_argument(

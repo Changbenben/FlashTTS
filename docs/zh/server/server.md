@@ -18,6 +18,7 @@
     --torch_dtype "bfloat16" \ # 对于spark-tts模型，不支持bfloat16的设备，只能设置为float32.
     --max_length 32768 \
     --llm_gpu_memory_utilization 0.6 \
+    --fix_voice \ # 是否固定spark-tts音色（female和male）
     --host 0.0.0.0 \
     --port 8000
     ```
@@ -89,6 +90,7 @@
 | `--wait_timeout`                | float | 动态批处理请求超时秒数                                                                                    | 0.01                    |
 | `--host`                        | str   | 服务监听地址                                                                                         | `0.0.0.0`               |
 | `--port`                        | int   | 服务监听端口                                                                                         | 8000                    |
+| `--fix_voice`                   | bool  | 是否固定住spark-tts模型的内置音色                                                                          | False                   |
 
 ### 3. 接口使用流程
 

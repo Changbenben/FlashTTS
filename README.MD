@@ -209,9 +209,14 @@ flashtts infer \
  --torch_dtype "bfloat16" \ 
  --max_length 32768 \
  --llm_gpu_memory_utilization 0.6 \
+ --fix_voice \  # 启动后将固定住spark-tts中内置音色（female和male）
  --host 0.0.0.0 \
  --port 8000
  ```
+web地址：`http://localhost:8000`
+
+接口文档地址：`http://localhost:8000/docs`
+
 详细部署说明，请参考：[server.md](docs/zh/server/server.md)
     
 ## ⚡ 推理速度
