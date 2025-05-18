@@ -40,6 +40,7 @@
    ```bash
     flashtts serve \
     --model_path orpheus-3b-0.1-ft-bf16 \ # 可修改为自己的模型地址
+    --snac_path snac_24khz \ 
     --lang english \
     --backend vllm \ # vllm、sglang、torch、llama-cpp、mlx-lm、tensorrt-llm任选一个
     --llm_device cuda \
