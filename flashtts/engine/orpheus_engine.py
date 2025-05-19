@@ -84,13 +84,14 @@ class AsyncOrpheusEngine(BaseEngine):
             snac_path: Optional[str] = None,
             llm_device: Literal["cpu", "cuda", "mps", "auto"] | str = "auto",
             detokenizer_device: Literal["cpu", "cuda", "mps", "auto"] | str = "auto",
-            backend: Literal["vllm", "llama-cpp", "sglang", "torch", "mlx-lm"] = "torch",
+            llm_tensorrt_path: Optional[str] = None,
+            backend: Literal["vllm", "llama-cpp", "sglang", "torch", "mlx-lm", "tensorrt-llm"] = "torch",
             llm_attn_implementation: Optional[Literal["sdpa", "flash_attention_2", "eager"]] = None,
             torch_dtype: Literal['float16', "bfloat16", 'float32', 'auto'] = "auto",
             llm_gpu_memory_utilization: Optional[float] = 0.8,  # snac模型显存暂用很小
             cache_implementation: Optional[str] = None,
             batch_size: int = 1,
-            llm_batch_size: int = 256,
+            llm_batch_size: int = 8,
             wait_timeout: float = 0.01,
             seed: int = 0,
             **kwargs
@@ -103,25 +104,12 @@ class AsyncOrpheusEngine(BaseEngine):
             device=self._auto_detect_device(detokenizer_device),
             batch_size=batch_size,
             wait_timeout=wait_timeout)
-        if self.lang == "spanish_italian":
-            self.speakers = set(LANG_MAP["spanish"]['voices'] + LANG_MAP["italian"]['voices'])
-            self.speakers = list(self.speakers)
-            self.speakers.sort()
-
-            self.tags = set(LANG_MAP["spanish"]['tags'] + LANG_MAP["italian"]['tags'])
-            self.tags = list(self.tags)
-            self.tags.sort()
-            self.default_speaker = LANG_MAP["spanish"]["default"]
-        else:
-            self.speakers = LANG_MAP[self.lang]["voices"]
-            self.tags = LANG_MAP[self.lang]["tags"]
-
-            self.default_speaker = LANG_MAP[self.lang]["default"]
 
         super().__init__(
             llm_model_path=model_path,
             max_length=max_length,
             llm_device=llm_device,
+            llm_tensorrt_path=llm_tensorrt_path,
             backend=backend,
             llm_attn_implementation=llm_attn_implementation,
             torch_dtype=torch_dtype,
@@ -132,6 +120,21 @@ class AsyncOrpheusEngine(BaseEngine):
             stop_token_ids=[128258, 128262],
             **kwargs
         )
+        if self.lang == "spanish_italian":
+            speakers = set(LANG_MAP["spanish"]['voices'] + LANG_MAP["italian"]['voices'])
+            speakers = list(speakers)
+            speakers.sort()
+
+            self.tags = set(LANG_MAP["spanish"]['tags'] + LANG_MAP["italian"]['tags'])
+            self.tags = list(self.tags)
+            self.tags.sort()
+            self.default_speaker = LANG_MAP["spanish"]["default"]
+        else:
+            speakers = LANG_MAP[self.lang]["voices"]
+            self.tags = LANG_MAP[self.lang]["tags"]
+
+            self.default_speaker = LANG_MAP[self.lang]["default"]
+        self.speakers = {name: {} for name in speakers}
 
     def _auto_detect_lang(
             self,
@@ -186,11 +189,6 @@ class AsyncOrpheusEngine(BaseEngine):
                 logger.info(f"{model_name} detected language is {detect_lang}. `lang` will be set to `{detect_lang}`")
                 lang = detect_lang
         return lang
-
-    def list_roles(self) -> list[str]:
-        roles = list(self.speakers)
-        roles.sort()
-        return roles
 
     def apply_prompt(
             self,

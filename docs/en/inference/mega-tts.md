@@ -128,27 +128,28 @@ Key classes and methods:
 | `AsyncMega3Engine`  | Wrapper for initializing MegaTTS3 (note: streaming is not supported) |
 | `add_speaker`       | Register a built-in audio role                                       |
 | `delete_speaker`    | Remove a registered role                                             |
-| `list_roles`        | List currently registered roles                                      |
+| `list_speakers`        | List currently registered roles                                      |
 | `speak_async`       | Async TTS, returns full audio (must add roles first)                 |
 | `clone_voice_async` | Async voice cloning with reference audio                             |
 | `multi_speak_async` | Multi-speaker synthesis (inherited from `BaseEngine`)                |
 
 ### `AsyncMega3Engine` Initialization Parameters
 
-| Parameter                    | Type    | Default   | Description                                               |
-|------------------------------|---------|-----------|-----------------------------------------------------------|
-| `model_path`                 | `str`   | —         | Path to the model root directory                          |
-| `max_length`                 | `int`   | `32768`   | Max context length for LLM                                |
-| `llm_device`                 | `str`   | `"auto"`  | LLM computation device                                    |
-| `tokenizer_device`           | `str`   | `"auto"`  | Tokenizer device                                          |
-| `backend`                    | `str`   | `"torch"` | Backend: `torch`, `vllm`, `sglang`, `llama-cpp`, `mlx-lm` |
-| `llm_attn_implementation`    | `str`   | `"eager"` | LLM attention implementation                              |
-| `torch_dtype`                | `str`   | `"auto"`  | LLM weight precision (`float16`, `bfloat16`, `float32`)   |
-| `llm_gpu_memory_utilization` | `float` | `0.6`     | Max GPU memory utilization (vllm/sglang only)             |
-| `batch_size`                 | `int`   | `1`       | Batch size for tokenizer/detokenizer                      |
-| `llm_batch_size`             | `int`   | `256`     | Batch size for LLM decoding                               |
-| `wait_timeout`               | `float` | `0.01`    | Async wait timeout for tokenizer/detokenizer              |
-| `seed`                       | `int`   | `0`       | Random seed                                               |
+| Parameter                    | Type    | Default   | Description                                                                                                                                       |
+|------------------------------|---------|-----------|---------------------------------------------------------------------------------------------------------------------------------------------------|
+| `model_path`                 | `str`   | —         | Path to the model root directory                                                                                                                  |
+| `max_length`                 | `int`   | `32768`   | Max context length for LLM                                                                                                                        |
+| `llm_device`                 | `str`   | `"auto"`  | LLM computation device                                                                                                                            |
+| `tokenizer_device`           | `str`   | `"auto"`  | Tokenizer device                                                                                                                                  |
+| `backend`                    | `str`   | `"torch"` | Backend: `torch`, `vllm`, `sglang`, `llama-cpp`, `mlx-lm`, `tensorrt-llm`                                                                         |
+| `--llm_tensorrt_path`        | `str`   | `None`    | Path to the TensorRT model. Only effective when the backend is set to `tensorrt-llm`. If not provided, defaults to `{model_path}/tensorrt-engine` |
+| `llm_attn_implementation`    | `str`   | `"eager"` | LLM attention implementation                                                                                                                      |
+| `torch_dtype`                | `str`   | `"auto"`  | LLM weight precision (`float16`, `bfloat16`, `float32`)                                                                                           |
+| `llm_gpu_memory_utilization` | `float` | `0.6`     | Max GPU memory utilization (vllm/sglang only)                                                                                                     |
+| `batch_size`                 | `int`   | `1`       | Batch size for tokenizer/detokenizer                                                                                                              |
+| `llm_batch_size`             | `int`   | `256`     | Batch size for LLM decoding                                                                                                                       |
+| `wait_timeout`               | `float` | `0.01`    | Async wait timeout for tokenizer/detokenizer                                                                                                      |
+| `seed`                       | `int`   | `0`       | Random seed                                                                                                                                       |
 
 ### Main API Parameter Reference
 
@@ -166,7 +167,7 @@ Key classes and methods:
 |-----------|-------|---------|------------------------|
 | `name`    | `str` | —       | Speaker name to delete |
 
-#### 3. `list_roles`
+#### 3. `list_speakers`
 
 Returns: `list[str]`
 

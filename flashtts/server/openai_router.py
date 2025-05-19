@@ -4,8 +4,9 @@
 # Author  : Hui Huang
 from fastapi import HTTPException, Request, APIRouter
 from fastapi.responses import JSONResponse, Response, StreamingResponse
-from .protocol import OpenAISpeechRequest, ModelCard, ModelList
+from .protocol import OpenAISpeechRequest, ModelCard, ModelList, StateInfo
 from .utils.audio_writer import StreamingAudioWriter
+from .utils.utils import generate_audio, generate_audio_stream, load_base64_or_url
 from ..engine import AutoEngine
 from ..logger import get_logger
 
@@ -20,11 +21,11 @@ openai_router = APIRouter(
 @openai_router.get("/models")
 async def list_models(raw_request: Request):
     """List all available models"""
-    engine: AutoEngine = raw_request.app.state.engine
+    state_info: StateInfo = raw_request.app.state.state_info
 
     # Create standard model list
     models = ModelList(data=[
-        ModelCard(id=engine.engine_name)
+        ModelCard(id=state_info.model_name)
     ])
 
     return JSONResponse(content=models.model_dump())
@@ -35,7 +36,7 @@ async def list_voices(raw_request: Request):
     """List all available voices for text-to-speech"""
     engine: AutoEngine = raw_request.app.state.engine
     try:
-        voices = engine.list_roles()
+        voices = engine.list_speakers()
         return {"voices": voices}
     except Exception as e:
         logger.error(f"Error listing voices: {str(e)}")
@@ -81,7 +82,8 @@ async def create_speech(
         client_request: Request
 ):
     engine: AutoEngine = client_request.app.state.engine
-    if request.model not in [engine.engine_name]:
+    state_info: StateInfo = client_request.app.state.state_info
+    if request.model not in [state_info.model_name]:
         raise HTTPException(
             status_code=400,
             detail={
@@ -90,101 +92,103 @@ async def create_speech(
                 "type": "invalid_request_error",
             },
         )
-    audio_writer = StreamingAudioWriter(request.response_format, sample_rate=engine.SAMPLE_RATE)
 
-    try:
+    # Set content type based on format
+    content_type = {
+        "mp3": "audio/mpeg",
+        "opus": "audio/opus",
+        "aac": "audio/aac",
+        "flac": "audio/flac",
+        "wav": "audio/wav",
+        "pcm": "audio/pcm",
+    }.get(request.response_format, f"audio/{request.response_format}")
 
-        # Set content type based on format
-        content_type = {
-            "mp3": "audio/mpeg",
-            "opus": "audio/opus",
-            "aac": "audio/aac",
-            "flac": "audio/flac",
-            "wav": "audio/wav",
-            "pcm": "audio/pcm",
-        }.get(request.response_format, f"audio/{request.response_format}")
+    api_inputs = dict(
+        text=request.input,
+        temperature=request.temperature,
+        top_k=request.top_k,
+        top_p=request.top_p,
+        repetition_penalty=request.repetition_penalty,
+        max_tokens=request.max_tokens,
+        length_threshold=request.length_threshold,
+        window_size=request.window_size
+    )
+    if engine.engine_name.lower() == 'spark':
+        api_inputs['pitch'] = float_to_speed_label(request.pitch)
+        api_inputs['speed'] = float_to_speed_label(request.speed)
 
-        api_inputs = dict(
-            name=request.voice,
-            text=request.input,
-            temperature=request.temperature,
-            top_k=request.top_k,
-            top_p=request.top_p,
-            repetition_penalty=request.repetition_penalty,
-            max_tokens=request.max_tokens,
-            length_threshold=request.length_threshold,
-            window_size=request.window_size
-        )
-        if engine.engine_name.lower() == 'spark':
-            api_inputs['pitch'] = float_to_speed_label(request.pitch)
-            api_inputs['speed'] = float_to_speed_label(request.speed)
-        # Check if streaming is requested (default for OpenAI client)
+    if engine._SUPPORT_CLONE and request.voice not in engine.list_speakers():
+        # 如果传入的voice为url或者base64，将启动语音克隆，暂且不支持mega3
+        if engine.engine_name == 'mega':
+            err_msg = ("Openai router does not currently support the voice cloning function of mega tts, "
+                       "because the model requires an additional `latent_file`.")
+            logger.error(err_msg)
+            raise HTTPException(status_code=400, detail={"error": err_msg})
+        ref_audio = await load_base64_or_url(request.voice)
+        api_inputs['reference_audio'] = ref_audio
+
         if request.stream:
-            async def stream_output():
-                try:
-                    # Stream chunks
-                    async for chunk_data in engine.speak_stream_async(
-                            **api_inputs
-                    ):
-                        # Check if client is still connected
-                        is_disconnected = client_request.is_disconnected
-                        if callable(is_disconnected):
-                            is_disconnected = await is_disconnected()
-                        if is_disconnected:
-                            logger.info("Client disconnected, stopping audio generation")
-                            break
-
-                        audio = audio_writer.write_chunk(chunk_data, finalize=False)
-                        yield audio
-                    yield audio_writer.write_chunk(finalize=True)
-
-                except Exception as e:
-                    logger.error(f"Error in single output streaming: {e}")
-                    audio_writer.close()
-                    raise
-
-            # Standard streaming without download link
-            return StreamingResponse(
-                stream_output(),
-                media_type=content_type,
-                headers={
-                    "Content-Disposition": f"attachment; filename=speech.{request.response_format}",
-                    "X-Accel-Buffering": "no",
-                    "Cache-Control": "no-cache",
-                    "Transfer-Encoding": "chunked",
-                },
-            )
+            tts_fn = engine.clone_voice_stream_async
         else:
-            headers = {
-                "Content-Disposition": f"attachment; filename=speech.{request.response_format}",
-                "Cache-Control": "no-cache",  # Prevent caching
-            }
+            tts_fn = engine.clone_voice_async
+    else:
+        api_inputs['name'] = request.voice
+        # 判断是否需要保存音色
+        if state_info.fix_voice and engine.engine_name == 'spark':
+            api_inputs['name'] = api_inputs['name'] or "female"
+            if state_info.acoustic_tokens is None:
+                state_info.init_acoustic_tokens()
+            if api_inputs['name'] in ['female', 'male']:
+                # 只有这两个内置角色需要持久化音色
+                if state_info.acoustic_tokens[api_inputs['name']] is None:
+                    api_inputs['return_acoustic_tokens'] = True
+                else:
+                    api_inputs['return_acoustic_tokens'] = False
+                    api_inputs['acoustic_tokens'] = state_info.acoustic_tokens[api_inputs['name']]
+        if request.stream:
+            tts_fn = engine.speak_stream_async
+        else:
+            tts_fn = engine.speak_async
 
+    audio_writer = StreamingAudioWriter(request.response_format, sample_rate=engine.SAMPLE_RATE)
+    if request.stream:
+        return StreamingResponse(
+            generate_audio_stream(
+                tts_fn,
+                api_inputs,
+                audio_writer,
+                client_request
+            ),
+            media_type=content_type,
+            headers={
+                "Content-Disposition": f"attachment; filename=speech.{request.response_format}",
+                "X-Accel-Buffering": "no",
+                "Cache-Control": "no-cache",
+                "Transfer-Encoding": "chunked",
+            },
+        )
+    else:
+        headers = {
+            "Content-Disposition": f"attachment; filename=speech.{request.response_format}",
+            "Cache-Control": "no-cache",  # Prevent caching
+        }
+        try:
             # Generate complete audio using public interface
-            audio_data = await engine.speak_async(
+            audio_data = await tts_fn(
                 **api_inputs
             )
-            output = audio_writer.write_chunk(audio_data, finalize=False)
-            final = audio_writer.write_chunk(finalize=True)
-            output = output + final
-            return Response(
-                content=output,
-                media_type=content_type,
-                headers=headers,
-            )
+            if isinstance(audio_data, tuple):
+                if state_info.acoustic_tokens is not None:
+                    state_info.acoustic_tokens[api_inputs['name']] = audio_data[1]
+                audio_data = audio_data[0]
+        except Exception as e:
+            logger.warning(f"Voice synthesis for the role failed: {e}")
+            raise HTTPException(status_code=500, detail=str(e))
 
-    except Exception as e:
-        # Handle unexpected errors
-        logger.error(f"Unexpected error in speech generation: {str(e)}")
-        try:
-            audio_writer.close()
-        except:
-            pass
-        raise HTTPException(
-            status_code=500,
-            detail={
-                "error": "processing_error",
-                "message": str(e),
-                "type": "server_error",
-            },
+        output = generate_audio(audio_data, audio_writer)
+
+        return Response(
+            content=output,
+            media_type=content_type,
+            headers=headers,
         )

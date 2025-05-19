@@ -1,7 +1,7 @@
 <div align="center">
   <img src="docs/zh/_img/icon.png" width="450" alt="FlashTTS Logo"/>
 
-[📘 Documentation](docs/zh/README.MD)
+[📘 Documentation](docs/zh/README.MD) | [📚 Deepwiki](https://deepwiki.com/HuiResearch/FlashTTS)
 
 [中文](README.MD) | [English](README_EN.MD)
 
@@ -18,16 +18,16 @@
 
 ## ✨ 功能亮点
 
-|     | 功能          | 说明                                                 |
-|-----|-------------|----------------------------------------------------|
-| 🚀  | **多后端推理加速** | 支持 `vllm`、`sglang`、`llama‑cpp`、`mlx‑lm` 等多种高性能推理引擎 |
-| 🎯  | **高并发**     | 动态批处理与异步队列，轻松应对大流量请求                               |
-| 🎛️ | **全参数控制**   | 可调节音调、语速、温度、情感标签等                                  |
-| 📱  | **轻量部署**    | 基于 FastAPI，一条命令即可启动；最小依赖                           |
-| 🔊  | **长文本合成**   | 支持超长文本，保持连续音色一致                                    |
-| 🔄  | **流式 TTS**  | 边生成边播放，降低等待，提高交互体验                                 |
-| 🎭  | **多角色对话**   | 同文本多角色合成，适合剧本配音                                    |
-| 🎨  | **现代化前端**   | 适配Web端                                             |
+|     | 功能          | 说明                                                                |
+|-----|-------------|-------------------------------------------------------------------|
+| 🚀  | **多后端推理加速** | 支持 `vllm`、`sglang`、`llama‑cpp`、`mlx‑lm`、`tensorrt-llm` 等多种高性能推理引擎 |
+| 🎯  | **高并发**     | 动态批处理与异步队列，轻松应对大流量请求                                              |
+| 🎛️ | **全参数控制**   | 可调节音调、语速、温度、情感标签等                                                 |
+| 📱  | **轻量部署**    | 基于 FastAPI，一条命令即可启动；最小依赖                                          |
+| 🔊  | **长文本合成**   | 支持超长文本，保持连续音色一致                                                   |
+| 🔄  | **流式 TTS**  | 边生成边播放，降低等待，提高交互体验                                                |
+| 🎭  | **多角色对话**   | 同文本多角色合成，适合剧本配音                                                   |
+| 🎨  | **现代化前端**   | 适配Web端                                                            |
 
 ## 🖼️ 前端示例
 
@@ -209,9 +209,15 @@ flashtts infer \
  --torch_dtype "bfloat16" \ 
  --max_length 32768 \
  --llm_gpu_memory_utilization 0.6 \
+ --fix_voice \  # 启动后将固定住spark-tts中内置音色（female和male）
  --host 0.0.0.0 \
  --port 8000
  ```
+web地址：`http://localhost:8000`
+
+接口文档地址：`http://localhost:8000/docs`
+
+详细部署说明，请参考：[server.md](docs/zh/server/server.md)
     
 ## ⚡ 推理速度
 

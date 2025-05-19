@@ -7,6 +7,7 @@ from snac.layers import Decoder
 from snac.vq import ResidualVectorQuantize
 from ..base_model import SnacBaseModel
 from ..batch_processor import AsyncBatchEngine
+from ..utils import get_dtype
 
 
 class SnacDeTokenizerModel(SnacBaseModel):
@@ -62,7 +63,8 @@ class SnacDeTokenizer:
         self.model = SnacDeTokenizerModel.from_pretrained(
             model_path,
         ).to(self.device)
-
+        self.device_type = device
+        self.dtype = get_dtype(self.device_type)
         self._batch_processor = AsyncBatchEngine(
             processing_function=self.batch_detokenize_async,
             batch_size=batch_size,
@@ -74,9 +76,10 @@ class SnacDeTokenizer:
             self,
             codes: List[torch.Tensor],
     ) -> torch.Tensor:
-        output = self.model(
-            [code.to(self.device) for code in codes]
-        )
+        with torch.amp.autocast(self.device_type, dtype=self.dtype):
+            output = self.model(
+                [code.to(self.device) for code in codes]
+            )
         return output
 
     async def batch_detokenize_async(

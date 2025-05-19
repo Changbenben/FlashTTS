@@ -2,6 +2,7 @@
 # Time      :2025/3/29 10:27
 # Author    :Hui Huang
 from omegaconf import OmegaConf, DictConfig
+import torch
 
 
 def load_config(config_path: str) -> DictConfig:
@@ -19,3 +20,25 @@ def load_config(config_path: str) -> DictConfig:
         config = OmegaConf.merge(base_config, config)
 
     return config
+
+
+def gpu_supports_fp16() -> bool:
+    # 1. 确保 CUDA 可用
+    if not torch.cuda.is_available():
+        return False
+
+    # 2. 获取设备的 compute capability
+    major, minor = torch.cuda.get_device_capability()
+
+    # 3. 判断是否 >= 5.3
+    if major > 5 or (major == 5 and minor >= 3):
+        return True
+    else:
+        return False
+
+
+def get_dtype(device: str):
+    if device.startswith('cuda') and gpu_supports_fp16():
+        return torch.float16
+    else:
+        return torch.float32

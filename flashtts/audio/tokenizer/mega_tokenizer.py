@@ -17,6 +17,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from typing import Dict, Literal
 from ..base_model import MegaBaseModel
+from ..utils import get_dtype
 from ...modules.mega_modules.ar_dur.ar_dur_predictor import CodePredictor, expand_states
 from ...modules.mega_modules.ar_dur.layers import LengthRegulator, PosEmb, Embedding
 from ...modules.mega_modules.ar_dur.rel_transformer import RelTransformerEncoder
@@ -512,7 +513,7 @@ class MegaTokenizer:
         self.fm = 8
         self.loudness_meter = pyln.Meter(self.sample_rate)
         self.length_regulator = LengthRegulator()
-        self.dtype = getattr(torch, self._get_dtype(device))
+        self.dtype = get_dtype(self.device_type)
         self.cfg_mask_token_phone = 302 - 1
         self.cfg_mask_token_tone = 32 - 1
         self.vae_stride = self.wavvae.config.get('vae_stride', 4)

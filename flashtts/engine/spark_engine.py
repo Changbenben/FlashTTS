@@ -2,6 +2,7 @@
 # Time      :2025/3/29 11:16
 # Author    :Hui Huang
 import asyncio
+import json
 import math
 import os.path
 import re
@@ -42,15 +43,18 @@ LEVELS_MAP = {
     "very_high": 4,
 }
 
-GENDER_MAP = {
+GENDER_MAP: dict[Literal["male", "female"], int] = {
     "female": 0,
     "male": 1,
 }
+
+ID2GENDER = {v: k for k, v in GENDER_MAP.items()}
 
 
 @dataclass
 class SparkAcousticTokens:
     prompt: str
+    gender: Literal["female", "male"]
     global_tokens: Optional[torch.Tensor] = None
 
     def __post_init__(self):
@@ -73,15 +77,21 @@ class SparkAcousticTokens:
             )
             self.global_tokens = global_token_ids
 
+    def to_dict(self) -> dict[str, str]:
+        return {
+            "prompt": self.prompt,
+            "gender": self.gender
+        }
+
     def save(self, filepath: str):
         with open(filepath, 'w', encoding='utf8') as w:
-            w.write(self.prompt)
+            w.write(json.dumps(self.to_dict(), ensure_ascii=False, indent=2))
 
     @classmethod
     def load(cls, filepath: str):
         with open(filepath, 'r', encoding='utf8') as r:
-            prompt = r.read()
-        return cls(prompt=prompt)
+            data = json.load(r)
+        return cls(**data)
 
 
 def process_prompt(
@@ -220,14 +230,15 @@ class AsyncSparkEngine(BaseEngine):
             llm_device: Literal["cpu", "cuda", "mps", "auto"] | str = "auto",
             tokenizer_device: Literal["cpu", "cuda", "mps", "auto"] | str = "auto",
             detokenizer_device: Literal["cpu", "cuda", "mps", "auto"] | str = "auto",
-            backend: Literal["vllm", "llama-cpp", "sglang", "torch", "mlx-lm"] = "torch",
+            llm_tensorrt_path: Optional[str] = None,
+            backend: Literal["vllm", "llama-cpp", "sglang", "torch", "mlx-lm", "tensorrt-llm"] = "torch",
             wav2vec_attn_implementation: Optional[Literal["sdpa", "flash_attention_2", "eager"]] = None,
             llm_attn_implementation: Optional[Literal["sdpa", "flash_attention_2", "eager"]] = None,
             torch_dtype: Literal['float16', "bfloat16", 'float32', 'auto'] = "auto",
             llm_gpu_memory_utilization: Optional[float] = 0.6,
             cache_implementation: Optional[str] = None,
             batch_size: int = 1,
-            llm_batch_size: int = 256,
+            llm_batch_size: int = 8,
             wait_timeout: float = 0.01,
             seed: int = 0,
             **kwargs,
@@ -270,12 +281,12 @@ class AsyncSparkEngine(BaseEngine):
             batch_size=batch_size,
             wait_timeout=wait_timeout
         )
-        self.speakers = {"female": {}, "male": {}}
 
         super().__init__(
             llm_model_path=os.path.join(model_path, "LLM"),
             max_length=max_length,
             llm_device=llm_device,
+            llm_tensorrt_path=llm_tensorrt_path,
             backend=backend,
             llm_attn_implementation=llm_attn_implementation,
             torch_dtype=torch_dtype,
@@ -286,11 +297,10 @@ class AsyncSparkEngine(BaseEngine):
             stop_tokens=["<|end_semantic_token|>"],
             **kwargs
         )
-
-    def list_roles(self) -> list[str]:
-        roles = list(self.speakers.keys())
-        roles.sort()
-        return roles
+        # 添加默认角色
+        for name in ['female', 'male']:
+            if name not in self.speakers:
+                self.speakers[name] = {}
 
     @classmethod
     def apply_prompt(
@@ -589,10 +599,7 @@ class AsyncSparkEngine(BaseEngine):
         if last_audio is not None:
             yield last_audio[-cross_fade_samples:]
 
-    async def add_speaker(self, name: str, audio, reference_text: Optional[str] = None):
-        if name in self.speakers:
-            logger.warning(f"{name} 音频已存在，将使用新的音频覆盖。")
-
+    async def _add_speaker(self, name: str, audio, reference_text: Optional[str] = None):
         if name not in ["female", "male"]:
             tokens = await self._tokenize(
                 audio
@@ -604,12 +611,6 @@ class AsyncSparkEngine(BaseEngine):
             }
         else:
             self.speakers[name] = {}
-
-    async def delete_speaker(self, name: str):
-        if name not in self.speakers:
-            logger.warning(f"{name} 角色不存在。")
-            return
-        self.speakers.pop(name)
 
     async def _control_generate(
             self,
@@ -628,6 +629,18 @@ class AsyncSparkEngine(BaseEngine):
             acoustic_tokens: Optional[SparkAcousticTokens | str] = None,
             return_acoustic_tokens: bool = False,
             **kwargs):
+        gender: Literal["female", "male"] = gender if gender in ["female", "male"] else "female"
+
+        if acoustic_tokens is not None and isinstance(acoustic_tokens, str):
+            acoustic_tokens = SparkAcousticTokens.load(acoustic_tokens)
+
+        if acoustic_tokens is not None:
+            if acoustic_tokens.gender != gender:
+                logger.warning(
+                    f"The provided `acoustic_tokens` belong to the `{acoustic_tokens.gender}`, but the specified gender is {gender}. "
+                    f"The `acoustic_tokens` will therefore not be used.")
+                acoustic_tokens = None
+
         segments = self.preprocess_text(
             text,
             window_size=window_size,
@@ -663,14 +676,11 @@ class AsyncSparkEngine(BaseEngine):
                 "completion": generated['completion']
             }
 
-        if acoustic_tokens is not None and isinstance(acoustic_tokens, str):
-            acoustic_tokens = SparkAcousticTokens(acoustic_tokens)
-
         audios = []
         if acoustic_tokens is None:
             # 如果没有传入音色，使用第一段生成音色token，将其与后面片段一起拼接，使用相同音色token引导输出semantic tokens。
             first_output = await generate_audio(segments[0], acoustic_token=None)
-            acoustic_tokens = SparkAcousticTokens(first_output['completion'])
+            acoustic_tokens = SparkAcousticTokens(first_output['completion'], gender=gender)
             audios.append(first_output['audio'])
             segments = segments[1:]
 
@@ -715,8 +725,7 @@ class AsyncSparkEngine(BaseEngine):
             logger.error(err_msg)
             raise ValueError(err_msg)
         self.set_seed(seed=self.seed)
-        speaker = self.speakers[name]
-        acoustic_tokens = None
+        out_acoustic_tokens = None
         if name in ["female", "male"]:
             output = await self._control_generate(
                 text=text,
@@ -737,15 +746,18 @@ class AsyncSparkEngine(BaseEngine):
             )
             if return_acoustic_tokens and isinstance(output, tuple):
                 audio = output[0]
-                acoustic_tokens = output[1]
+                out_acoustic_tokens = output[1]
             else:
                 audio = output
         else:
+            speaker_data = await self.get_speaker(name)
+            global_tokens = speaker_data['global_tokens'].detach().clone()
+            semantic_tokens = speaker_data['semantic_tokens'].detach().clone()
             audio = await self._clone_voice_by_tokens(
                 text=text,
-                global_tokens=speaker['global_tokens'],
-                semantic_tokens=speaker['semantic_tokens'],
-                reference_text=speaker['reference_text'],
+                global_tokens=global_tokens,
+                semantic_tokens=semantic_tokens,
+                reference_text=speaker_data['reference_text'],
                 temperature=temperature,
                 top_k=top_k,
                 top_p=top_p,
@@ -756,9 +768,15 @@ class AsyncSparkEngine(BaseEngine):
                 split_fn=split_fn,
                 **kwargs
             )
+            del global_tokens
+            del semantic_tokens
+
         audio = (audio * 32767).astype(np.int16)
-        if acoustic_tokens is not None:
-            return audio, acoustic_tokens
+
+        torch.cuda.empty_cache()
+
+        if out_acoustic_tokens is not None:
+            return audio, out_acoustic_tokens
         return audio
 
     async def _control_stream_generate(
@@ -783,6 +801,8 @@ class AsyncSparkEngine(BaseEngine):
             return_acoustic_tokens: bool = False,
             **kwargs
     ):
+        gender: Literal["female", "male"] = gender if gender in ["female", "male"] else "female"
+
         if audio_chunk_duration < 0.5:
             err_msg = "audio_chunk_duration at least 0.5 seconds"
             logger.error(err_msg)
@@ -793,7 +813,14 @@ class AsyncSparkEngine(BaseEngine):
             raise ValueError(err_msg)
 
         if acoustic_tokens is not None and isinstance(acoustic_tokens, str):
-            acoustic_tokens = SparkAcousticTokens(acoustic_tokens)
+            acoustic_tokens = SparkAcousticTokens.load(acoustic_tokens)
+
+        if acoustic_tokens is not None:
+            if acoustic_tokens.gender != gender:
+                logger.warning(
+                    f"The provided `acoustic_tokens` belong to the `{acoustic_tokens.gender}`, but the specified gender is {gender}. "
+                    f"The `acoustic_tokens` will therefore not be used.")
+                acoustic_tokens = None
 
         audio_tokenizer_frame_rate = 50
         max_chunk_size = math.ceil(max_audio_chunk_duration * audio_tokenizer_frame_rate)
@@ -841,7 +868,7 @@ class AsyncSparkEngine(BaseEngine):
                         r"(<\|start_acoustic_token\|>.*?<\|end_global_token\|>)",
                         completion)
                     if len(acoustics) > 0:
-                        acoustic_tokens = SparkAcousticTokens(acoustics[0])
+                        acoustic_tokens = SparkAcousticTokens(acoustics[0], gender=gender)
                         completion = ""
                     else:
                         continue
@@ -915,12 +942,7 @@ class AsyncSparkEngine(BaseEngine):
             return_acoustic_tokens: bool = False,
             **kwargs) -> AsyncIterator[np.ndarray | SparkAcousticTokens]:
         name = name or "female"
-        if name not in self.speakers:
-            err_msg = f"{name} 角色不存在。"
-            logger.error(err_msg)
-            raise ValueError(err_msg)
         self.set_seed(seed=self.seed)
-        speaker = self.speakers[name]
         out_acoustic_tokens = None
         if name in ['female', 'male']:
             async for chunk in self._control_stream_generate(
@@ -948,11 +970,16 @@ class AsyncSparkEngine(BaseEngine):
                 else:
                     yield (chunk * 32767).astype(np.int16)
         else:
+            speaker_data = await self.get_speaker(name)
+            if speaker_data is None:
+                raise ValueError(F'The role "{name}" does not exist.')
+            global_tokens = speaker_data['global_tokens'].detach().clone()
+            semantic_tokens = speaker_data['semantic_tokens'].detach().clone()
             async for chunk in self._clone_voice_stream_by_tokens(
                     text=text,
-                    global_tokens=speaker['global_tokens'],
-                    semantic_tokens=speaker['semantic_tokens'],
-                    reference_text=speaker['reference_text'],
+                    global_tokens=global_tokens,
+                    semantic_tokens=semantic_tokens,
+                    reference_text=speaker_data['reference_text'],
                     pitch=pitch,
                     speed=speed,
                     temperature=temperature,
@@ -970,8 +997,14 @@ class AsyncSparkEngine(BaseEngine):
                     **kwargs
             ):
                 yield (chunk * 32767).astype(np.int16)
+
+            del global_tokens
+            del semantic_tokens
+
         if out_acoustic_tokens is not None:
             yield out_acoustic_tokens
+
+        torch.cuda.empty_cache()
 
     async def clone_voice_async(
             self,
@@ -1010,6 +1043,7 @@ class AsyncSparkEngine(BaseEngine):
             split_fn=split_fn,
             **kwargs
         )
+        torch.cuda.empty_cache()
         return (audio * 32767).astype(np.int16)
 
     async def clone_voice_stream_async(
@@ -1059,3 +1093,5 @@ class AsyncSparkEngine(BaseEngine):
                 **kwargs
         ):
             yield (chunk * 32767).astype(np.int16)
+
+        torch.cuda.empty_cache()

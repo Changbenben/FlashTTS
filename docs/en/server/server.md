@@ -5,10 +5,11 @@
 1. Refer to the installation guide: [installation.md](../get_started/installation.md)
 2. Start the server:
 
+    - spark tts
    ```bash
    flashtts serve \
    --model_path Spark-TTS-0.5B \ # Change to your model path if needed
-   --backend vllm \ # Choose from: vllm, sglang, torch, llama-cpp, mlx-lm
+   --backend vllm \ # Choose from: vllm, sglang, torch, llama-cpp, mlx-lm, tensorrt-llm
    --llm_device cuda \
    --tokenizer_device cuda \
    --detokenizer_device cuda \
@@ -17,9 +18,40 @@
    --torch_dtype "bfloat16" \ # Spark-TTS does not support bfloat16 on all devices; use float32 if needed
    --max_length 32768 \
    --llm_gpu_memory_utilization 0.6 \
+   --fix_voice \ # Whether to fix the spark-tts timbre (female and male)
    --host 0.0.0.0 \
    --port 8000
    ```
+    - mega tts
+   ```bash
+    flashtts serve \
+    --model_path MegaTTS3 \ # Change to your model path if needed
+    --backend vllm \ # Choose from: vllm, sglang, torch, llama-cpp, mlx-lm, tensorrt-llm
+    --llm_device cuda \
+    --tokenizer_device cuda \
+    --llm_attn_implementation sdpa \ # Recommended for torch backend
+    --torch_dtype "float16" \ 
+    --max_length 8192 \
+    --llm_gpu_memory_utilization 0.6 \
+    --host 0.0.0.0 \
+    --port 8000
+    ```
+    - orphpeus tts
+   ```bash
+    flashtts serve \
+    --model_path orpheus-3b-0.1-ft-bf16 \ # Change to your model path if needed
+    --snac_path snac_24khz \  
+    --lang english \
+    --backend vllm \ # Choose from: vllm, sglang, torch, llama-cpp, mlx-lm, tensorrt-llm
+    --llm_device cuda \
+    --detokenizer_device cuda \
+    --llm_attn_implementation sdpa \ # Recommended for torch backend
+    --torch_dtype "float16" \ 
+    --max_length 8192 \
+    --llm_gpu_memory_utilization 0.6 \
+    --host 0.0.0.0 \
+    --port 8000
+    ```
 
 3. Access the web interface:
    ```
@@ -35,29 +67,31 @@
 
 ### 2. Server Startup Arguments (`server.py`)
 
-| Argument                        | Type  | Description                                                                                        | Default                 |
-|---------------------------------|-------|----------------------------------------------------------------------------------------------------|-------------------------|
-| `--model_path`                  | str   | Required. Path to the TTS model directory                                                          | —                       |
-| `--backend`                     | str   | Required. TTS backend engine. Options: `llama-cpp`, `vllm`, `sglang`, `torch`, `mlx-lm`            | —                       |
-| `--snac_path`                   | str   | Path to OrpheusTTS SNAC module. Required only if model is `orpheus`                                | None                    |
-| `--role_dir`                    | str   | Directory for role audio references. Default: `data/roles` for Spark, `data/mega-roles` for Mega   | Spark: `data/roles`     |
-|                                 |       |                                                                                                    | Mega: `data/mega-roles` |
-| `--api_key`                     | str   | API key for access. All requests must include `Authorization: Bearer <KEY>` if enabled             | None                    |
-| `--llm_device`                  | str   | Device for running the LLM (e.g., `cpu`, `cuda`)                                                   | `auto`                  |
-| `--tokenizer_device`            | str   | Device for the audio tokenizer                                                                     | `auto`                  |
-| `--detokenizer_device`          | str   | Device for the audio detokenizer                                                                   | `auto`                  |
-| `--wav2vec_attn_implementation` | str   | Attention implementation for `wav2vec` in Spark-TTS. Options: `sdpa`, `flash_attention_2`, `eager` | `eager`                 |
-| `--llm_attn_implementation`     | str   | Attention method for LLM (torch backend). Options: `sdpa`, `flash_attention_2`, `eager`            | `eager`                 |
-| `--max_length`                  | int   | Max LLM context length                                                                             | 32768                   |
-| `--llm_gpu_memory_utilization`  | float | GPU memory usage ratio (for `vllm`/`sglang`)                                                       | 0.6                     |
-| `--torch_dtype`                 | str   | Model precision type. Options: `float16`, `bfloat16`, `float32`, `auto`                            | `auto`                  |
-| `--cache_implementation`        | str   | Cache strategy for `torch` backend: `static`, `offloaded_static`, `sliding_window`, etc.           | None                    |
-| `--seed`                        | int   | Random seed                                                                                        | 0                       |
-| `--batch_size`                  | int   | Max batch size for audio processing                                                                | 1                       |
-| `--llm_batch_size`              | int   | Max LLM batch size                                                                                 | 256                     |
-| `--wait_timeout`                | float | Timeout (in seconds) for dynamic batching                                                          | 0.01                    |
-| `--host`                        | str   | Host address to bind                                                                               | `0.0.0.0`               |
-| `--port`                        | int   | Port number to listen on                                                                           | 8000                    |
+| Argument                        | Type  | Description                                                                                                                                       | Default                 |
+|---------------------------------|-------|---------------------------------------------------------------------------------------------------------------------------------------------------|-------------------------|
+| `--model_path`                  | str   | Required. Path to the TTS model directory                                                                                                         | —                       |
+| `--backend`                     | str   | Required. TTS backend engine. Options: `llama-cpp`, `vllm`, `sglang`, `torch`, `mlx-lm`, `tensorrt-llm`                                           | —                       |
+| `--snac_path`                   | str   | Path to OrpheusTTS SNAC module. Required only if model is `orpheus`                                                                               | None                    |
+| `--llm_tensorrt_path`           | `str` | Path to the TensorRT model. Only effective when the backend is set to `tensorrt-llm`. If not provided, defaults to `{model_path}/tensorrt-engine` | None                    |
+| `--role_dir`                    | str   | Directory for role audio references. Default: `data/roles` for Spark, `data/mega-roles` for Mega                                                  | Spark: `data/roles`     |
+|                                 |       |                                                                                                                                                   | Mega: `data/mega-roles` |
+| `--api_key`                     | str   | API key for access. All requests must include `Authorization: Bearer <KEY>` if enabled                                                            | None                    |
+| `--llm_device`                  | str   | Device for running the LLM (e.g., `cpu`, `cuda`)                                                                                                  | `auto`                  |
+| `--tokenizer_device`            | str   | Device for the audio tokenizer                                                                                                                    | `auto`                  |
+| `--detokenizer_device`          | str   | Device for the audio detokenizer                                                                                                                  | `auto`                  |
+| `--wav2vec_attn_implementation` | str   | Attention implementation for `wav2vec` in Spark-TTS. Options: `sdpa`, `flash_attention_2`, `eager`                                                | `eager`                 |
+| `--llm_attn_implementation`     | str   | Attention method for LLM (torch backend). Options: `sdpa`, `flash_attention_2`, `eager`                                                           | `eager`                 |
+| `--max_length`                  | int   | Max LLM context length                                                                                                                            | 32768                   |
+| `--llm_gpu_memory_utilization`  | float | GPU memory usage ratio (for `vllm`/`sglang`)                                                                                                      | 0.6                     |
+| `--torch_dtype`                 | str   | Model precision type. Options: `float16`, `bfloat16`, `float32`, `auto`                                                                           | `auto`                  |
+| `--cache_implementation`        | str   | Cache strategy for `torch` backend: `static`, `offloaded_static`, `sliding_window`, etc.                                                          | None                    |
+| `--seed`                        | int   | Random seed                                                                                                                                       | 0                       |
+| `--batch_size`                  | int   | Max batch size for audio processing                                                                                                               | 1                       |
+| `--llm_batch_size`              | int   | Max LLM batch size                                                                                                                                | 256                     |
+| `--wait_timeout`                | float | Timeout (in seconds) for dynamic batching                                                                                                         | 0.01                    |
+| `--host`                        | str   | Host address to bind                                                                                                                              | `0.0.0.0`               |
+| `--port`                        | int   | Port number to listen on                                                                                                                          | 8000                    |
+| `--fix_voice`                   | bool  | Fixes the female and male timbres in the spark-tts model, ensuring they remain unchanged.                                                         | False                   |
 
 ---
 
@@ -156,7 +190,7 @@ curl -X POST http://localhost:8000/clone_voice \
 - Uses `OpenAISpeechRequest` format:
     - `model`: Model ID or name
     - `input`: Text to synthesize
-    - `voice`: Voice name or preset
+    - `voice`: The name of the audio character you want to use, or a URL or base64 of a reference audio.
     - Other parameters same as Clone/Speak
 
 #### 4.5 Retrieve Available Roles: `GET /audio_roles` or `GET /v1/audio_roles`
